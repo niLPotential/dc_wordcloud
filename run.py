@@ -1,77 +1,62 @@
-import matplotlib.pyplot as plt
 from bs4 import BeautifulSoup
-import requests, lxml, os
+import requests
 from wordcloud import WordCloud
 
-fontpath='font.otf'
-tdata = ''
-ndata = ''
+fontpath = 'font.otf'
+title_data = ""
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/67.0.3396.99 Safari/537.36'
 }
 
-name = input('갤러리 입력:')
-keyword = input('검색어 입력(*=전체):')
-page = int(input('조회 페이지 범위 입력(최소 1 이상):'))
+print("디시 워드클라우드 생성기\nBased on https://github.com/pdjdev/dc_wordcloud")
 
-print('갤러리 검색중...')
-r = requests.get('https://search.dcinside.com/gallery/q/' + name, headers = headers).text
+id = input('갤러리 ID 입력:')
+url = "https://gall.dcinside.com/"+id
+print("갤러리 링크:", url)
 
-if 'integrate_cont_list' in r:
+keyword = input('검색어 입력:') or '*'
+if keyword == '*':
+    print("검색어 없음")
+else:
+    print(keyword, "검색")
 
-    bs = BeautifulSoup(r, 'lxml')
-    link = bs.find('ul', class_='integrate_cont_list').a['href']
+start_page = int(input('조회 시작 페이지 입력(최소 1 이상):'))
+end_page = int(input('조회 끝 페이지 입력(최소 1 이상):'))
+print(start_page, "부터", end_page, "페이지까지 검색")
 
-    r = requests.get(link, headers = headers).text
-
-    print('갤러리 형식:', end=' ')
-    #마이너 갤러리일 경우
-    if 'location.replace' in r:
-        link = link.replace('board/','mgallery/board/')
-        
-        print('마이너')
+response = requests.get(url, headers=headers)
+if response.status_code == 404:
+    ("해당 갤러리가 존재하지 않습니다")
+if response.status_code == 200:
+    print("해당 갤러리로 리다이렉트 중")
+    if "location.replace" in requests.get(response.url, headers=headers).text:
+        url = response.url.replace('board/', 'mgallery/board/')
+        print("리다이렉트 된 마이너 갤러리 주소:", url)
     else:
-        print('정식')
-        
-    for i in range(1, page + 1):
+        url = response.url
+        print("리다이렉트 된 갤러리 주소:", url)
 
-        print('페이지 읽는 중... [{}/{}]'.format(i, page), end='\r')
-        
-        r = requests.get(link + '&page=' + str(i), headers = headers).text    
-        bs = BeautifulSoup(r, 'lxml')
+    for i in range(start_page, end_page+1):
+        print('페이지 읽는 중... [{}/{}]'.format(i-start_page +
+                                           1, 1+end_page-start_page), end='\r')
 
-        tmp1 = bs.find_all('td', class_='gall_tit ub-word')
-        tmp2 = bs.find_all("td", {"class", "gall_writer ub-writer"})
+        r = requests.get(url + '&page=' +
+                         str(i), headers=headers)
+        bs = BeautifulSoup(r.text, 'lxml')
 
-        post_data = zip(tmp1, tmp2)
-        
-        for s in post_data:
-             if str(s[0]).find('<b>')==-1 and s[1]['data-nick'].strip() != 'ㅇㅇ': ndata += s[1]['data-nick'].strip() + '\n'
+        title_list = bs.find_all('td', class_='gall_tit ub-word')
+        for title in title_list:
+            if str(title).find('<b>') == -1 and ((keyword in title.find('a').text) or keyword == '*'):
+                title_data += title.find('a').text + '\n'
 
-        tmp2 = bs.find_all('td', class_='gall_num')
-
-        post_data = zip(tmp1, tmp2)
-
-        for s in post_data:
-            if str(s[0]).find('<b>')==-1 and ((keyword in s[0].find('a').text) or keyword=='*'):
-                tdata += s[0].find('a').text + '\n'
-
-    print()
-    print('워드클라우드 생성 중... [1/2]', end='\r')
-    wc_title = WordCloud(font_path=fontpath, width=1920, height=1080, background_color='white').generate(tdata)
-    
-    print('워드클라우드 생성 중... [2/2]')
-    wc_nick = WordCloud(font_path=fontpath, width=1920, height=1080, background_color='white').generate(ndata)
+    print("\n제목 워드클라우드 생성 중")
+    wc_title = WordCloud(font_path=fontpath, width=1920, height=1080,
+                         background_color='white').generate(title_data)
 
     print('이미지 저장 중...')
     wc_title.to_file('title.png')
-    wc_nick.to_file('nick.png')
 
     print('저장 완료')
-    
 else:
-    print('해당 명칭의 갤러리가 없습니다.')
-
-
-
+    print("Unexpected HTTP error")
